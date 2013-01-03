@@ -30,6 +30,8 @@ module Text.HTML.KURE
           Node,
           Html(..),
           -- * KURE combinators synonyms specialized to our generic type 'Node'
+          injectT',
+          projectT',
           extractT',
           promoteT',
           extractR',
@@ -78,7 +80,8 @@ newtype Syntax  = Syntax XmlTree
 -- in an inside to outside order
 newtype Context = Context [Block]
 
---
+-- | Our universal node type. Only used during
+-- generic tree walking and traversals.
 data Node
         = HTMLNode      HTML
         | BlockNode     Block
@@ -173,7 +176,7 @@ instance Html Syntax where
 
 -----------------------------------------------------------------------------
 
--- 'htmlT' take arrows that operate over blocks, texts, and syntax,
+-- | 'htmlT' take arrows that operate over blocks, texts, and syntax,
 -- and returns a translate over HTML.
 
 htmlT :: (Monad m)
@@ -192,11 +195,11 @@ htmlT tr1 tr2 tr3 k = translate $ \ c (HTML ts) -> liftM k $ flip mapM ts $ \ ca
                         t@(NTree (XError {}) _)   -> apply tr3 c (Syntax t)
                         t -> error $ "not XTag or XText: " ++ take 100 (show t)
 
--- 'mconcat' over 'HTML'
+-- | 'mconcat' over 'HTML'
 htmlC :: [HTML] -> HTML
 htmlC = mconcat
 
--- 'blockT' take arrows that operate over attributes and (the inner) HTML,
+-- | 'blockT' take arrows that operate over attributes and (the inner) HTML,
 -- and returns a translate over a single block.
 
 blockT :: (Monad m)
@@ -216,6 +219,7 @@ blockT tr1 tr2 k = translate $ \ (Context cs) (Block t) ->
                   return $ k nm attrs' rest'
           _ -> fail "blockT runtime type error"
 
+-- | 'blockC' builds a block from its components.
 blockC :: String -> Attrs -> HTML -> Block
 blockC nm (Attrs attrs) (HTML rest) = Block (NTree (XTag (mkName nm) attrs) rest)
 
@@ -237,7 +241,6 @@ textT k = translate $ \ _ (Text txt) ->
 -- | 'textC' constructs a Text from a fully unescaped string.
 textC :: String -> Text
 textC str = Text [ NTree t [] | t <-  map (either XText XCharRef) $ escapeText str ]
-
 
 -- | 'attrsT' promotes a translation over 'Attr' into a translation over 'Attrs'.
 attrsT :: (Monad m)
@@ -271,7 +274,7 @@ attrC nm val = Attr $ mkAttr (mkName nm) [mkText val]
 --------------------------------------------------
 -- HTML Builders.
 
--- | 'block 'is the main way of generates a block in HTML.
+-- | 'block' is the main way of generates a block in HTML.
 block :: String -> [Attr] -> HTML -> HTML
 block nm xs inner = HTML [t]
   where Block t = blockC nm (attrsC xs) inner
@@ -311,6 +314,12 @@ getInner = blockT idR idR (\ _ _ h -> h)
 --------------------------------------------------
 -- common pattern; promote a translation over a block to over
 
+injectT' :: (Monad m, Injection a g, g ~ Node) => Translate c m a g
+injectT' = injectT
+
+projectT' :: (Monad m, Injection a g, g ~ Node) => Translate c m g a
+projectT' = projectT
+
 extractT' :: (Monad m, Injection a g, g ~ Node) => Translate c m g b -> Translate c m a b
 extractT' = extractT
 
@@ -323,7 +332,6 @@ extractR' = extractR
 promoteR' :: (Monad m, Injection a g, g ~ Node) => Rewrite c m a -> Rewrite c m g
 promoteR' = promoteR
 
-
 ---------------------------------------
 
 -- | lifts mapping of 'Block' to 'HTML' over a single level of 'HTML' sub-nodes.
@@ -331,6 +339,8 @@ promoteR' = promoteR
 
 concatMapHTML :: (Monad m) => Translate Context m Block HTML -> Translate Context m HTML HTML
 concatMapHTML tr = htmlT tr (arr html) (arr html) htmlC
+
+-- | parsing HTML files. If you want to unparse, use 'show'.
 
 parseHTML :: FilePath -> String -> HTML
 parseHTML fileName input = HTML $ parseHtmlDocument fileName input
