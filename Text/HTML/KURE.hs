@@ -12,7 +12,12 @@ module Text.HTML.KURE
           textT, textC,
           attrsT, attrsC,
           attrT, attrC,
-          -- * Other Combinators
+          -- * Other Combinators and Observers
+          getAttr,
+          isTag,
+          getTag,
+          getAttrs,
+          getInner,
           concatMapHTML,
           -- * Types and Classes
           HTML,
@@ -43,6 +48,7 @@ import Control.Arrow
 import Control.Applicative
 import Data.Char
 import Data.Monoid
+import Data.Maybe
 import Control.Monad
 
 --import Language.KURE.Walker
@@ -228,10 +234,12 @@ textT k = translate $ \ _ (Text txt) ->
 --                Text t@(NTree (XCharRef n) []) -> return $ k $ xshow [t]
 
 
--- 'textC' constructs a Text from a fully unescaped string.
+-- | 'textC' constructs a Text from a fully unescaped string.
 textC :: String -> Text
 textC str = Text [ NTree t [] | t <-  map (either XText XCharRef) $ escapeText str ]
 
+
+-- | 'attrsT' promotes a translation over 'Attr' into a translation over 'Attrs'.
 attrsT :: (Monad m)
        => Translate Context m Attr a
        -> ([a] -> x)
@@ -240,10 +248,12 @@ attrsT tr k = translate $ \ c (Attrs ts) -> liftM k $ flip mapM ts $ \ case
                         t@(NTree (XAttr {}) _) -> apply tr c (Attr t)
                         _                      -> fail "not XTag or XText"
 
+-- | join attributes together.
 attrsC :: [Attr] -> Attrs
 attrsC xs = Attrs [ x | Attr x <- xs ]
 
 
+-- | promote a function over an attributes components into a translate over 'Attr'.
 attrT :: (Monad m)
       => (String -> String -> x)
       -> Translate Context m Attr x
@@ -253,39 +263,48 @@ attrT k = translate $ \ c -> \ case
                   && namespaceUri nm == "" -> return $ k (localPart nm) txt
                 _                          -> fail "textT runtime error"
 
+-- | Create a single attribute.
 attrC :: String -> String -> Attr
 attrC nm val = Attr $ mkAttr (mkName nm) [mkText val]
 
-attr = attrC
-
-attrs = attrsC
 
 --------------------------------------------------
 -- HTML Builders.
 
+-- | 'block 'is the main way of generates a block in HTML.
 block :: String -> [Attr] -> HTML -> HTML
 block nm xs inner = HTML [t]
   where Block t = blockC nm (attrsC xs) inner
 
+-- | 'text' creates a HTML node with text inside it.
 text txt = HTML t
   where Text t = textC txt
 
 --------------------------------------------------
--- observers
+-- Block observers
 
-getAttr :: forall a m g . (MonadCatch m, Injection a g, g ~ Node) => String -> Translate Context m a String
-getAttr nm = extractT' $ onetdT $ promoteT' (find >>> joinT)
+-- | 'getAttr' gets the attributes of a specific attribute of a block.
+getAttr :: (MonadCatch m) => String -> Translate Context m Block String
+getAttr nm = getAttrs >>> attrsT find catchesM >>> joinT
   where
+          find :: (MonadCatch m) => Translate Context m Attr (m String)
           find = attrT $ \ nm' val -> if nm' == nm
                                       then return val
                                       else fail $ "getAttr: not" ++ show nm
 
+-- | 'isTag' checks the block for a specific block name.
 isTag :: (Monad m) => String -> Translate Context m Block ()
 isTag nm = blockT idR idR (\ nm' _ _ -> nm == nm') >>> guardT
 
+-- | 'getTag' gets the block name.
 getTag :: (Monad m) => Translate Context m Block String
 getTag = blockT idR idR (\ nm _ _ -> nm)
 
+-- | 'getAttrs' gets the attributes inside a block.
+getAttrs :: (Monad m) => Translate Context m Block Attrs
+getAttrs = blockT idR idR (\ _ as _ -> as)
+
+-- | 'getInner' gets the HTML inside a block.
 getInner :: (Monad m) => Translate Context m Block HTML
 getInner = blockT idR idR (\ _ _ h -> h)
 
