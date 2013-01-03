@@ -6,6 +6,7 @@ module Text.HTML.KURE
           -- * HTML Builders
           block,
           text,
+          attr,
           -- * Primitive Traversal Combinators
           htmlT, htmlC,
           blockT, blockC,
@@ -282,6 +283,13 @@ block nm xs inner = HTML [t]
 -- | 'text' creates a HTML node with text inside it.
 text txt = HTML t
   where Text t = textC txt
+
+----------------------------------------------------
+-- Attr builder
+
+-- | build a single Attr. Short version of 'attrC'.
+attr :: String -> String -> Attr
+attr = attrC
 
 --------------------------------------------------
 -- Block observers
