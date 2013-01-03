@@ -7,6 +7,7 @@ module Text.HTML.KURE
           block,
           text,
           attr,
+          zero,
           -- * Primitive Traversal Combinators
           htmlT, htmlC,
           blockT, blockC,
@@ -74,7 +75,7 @@ newtype Attrs = Attrs XmlTrees
 -- | Single attribute
 newtype Attr  = Attr XmlTree
 
--- | XML/HTML syntax, like <? or <!
+-- | XML/HTML syntax, like <? or <!, or our zero-width space 'zero'.
 newtype Syntax  = Syntax XmlTree
 
 -- | Context contains all the containing nodes
@@ -192,6 +193,7 @@ htmlT :: (Monad m)
      -> Translate Context m HTML x
 htmlT tr1 tr2 tr3 k = translate $ \ c (HTML ts) -> liftM k $ flip mapM ts $ \ case
                         t@(NTree (XTag {}) _)     -> apply tr1 c (Block t)
+                        t@(NTree (XText "") _)    -> apply tr3 c (Syntax t)     -- zero's
                         t@(NTree (XText {}) _)    -> apply tr2 c (Text [t])
                         t@(NTree (XCharRef n) _)  -> apply tr2 c (Text [t])
                         t@(NTree (XPi {}) _)      -> apply tr3 c (Syntax t)
@@ -287,6 +289,11 @@ block nm xs inner = HTML [t]
 -- | 'text' creates a HTML node with text inside it.
 text txt = HTML t
   where Text t = textC txt
+
+-- | 'zero' is an empty piece of HTML, which can be used to avoid
+-- the use of the \<tag/\> form; for example "block \"br\" [] zero" will generate both an opener and closer. 'zero' is *not* the same as "text \"\"".
+zero :: HTML
+zero = HTML [ NTree (XText "") [] ]
 
 ----------------------------------------------------
 -- Attr builder
