@@ -116,6 +116,10 @@ instance Monoid HTML where
         mempty = HTML []
         mappend (HTML xs) (HTML ys) = HTML $ xs ++ ys
 
+instance Monoid Context where
+        mempty = Context []
+        mappend (Context xs) (Context ys) = Context $ xs ++ ys
+
 -----------------------------------------------------------------------------
 -- KURE specific instances
 
