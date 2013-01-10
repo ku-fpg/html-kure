@@ -79,7 +79,7 @@ newtype Attr  = Attr XmlTree
 -- | XML/HTML syntax, like <? or <!, or our zero-width space 'zero'.
 newtype Syntax  = Syntax XmlTree
 
--- | Context contains all the containing nodes
+-- | Context contains all the containing elements
 -- in an inside to outside order
 newtype Context = Context [Element]
 
@@ -87,7 +87,7 @@ newtype Context = Context [Element]
 -- generic tree walking and traversals.
 data Node
         = HTMLNode      HTML
-        | ElementNode     Element
+        | ElementNode   Element
         | TextNode      Text
         | AttrsNode     Attrs
         | AttrNode      Attr
