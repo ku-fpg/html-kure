@@ -4,13 +4,13 @@ module Text.HTML.KURE
         ( -- * Reading HTML
           parseHTML,
           -- * HTML Builders
-          block,
+          element,
           text,
           attr,
           zero,
           -- * Primitive Traversal Combinators
           htmlT, htmlC,
-          blockT, blockC,
+          elementT, elementC,
           textT, textC,
           attrsT, attrsC,
           attrT, attrC,
@@ -20,10 +20,11 @@ module Text.HTML.KURE
           getTag,
           getAttrs,
           getInner,
-          concatMapHTML,
+          anyElementHTML,
+          unconcatHTML,
           -- * Types and Classes
           HTML,
-          Block,
+          Element,
           Text,
           Attrs,
           Attr,
@@ -45,7 +46,7 @@ import Text.XML.HXT.DOM.ShowXml
 import Text.XML.HXT.DOM.TypeDefs
 import Text.XML.HXT.DOM.XmlNode
 import Data.Tree.NTree.TypeDefs
-import Text.XML.HXT.Parser.XmlParsec
+import Text.XML.HXT.Parser.XmlParsec hiding (element)
 import Text.XML.HXT.Parser.XhtmlEntities
 
 import Control.Arrow
@@ -63,13 +64,13 @@ import Language.KURE hiding ()
 -- 'HTML' is concatenated using '<>', the 'Monoid' mappend.
 newtype HTML  = HTML XmlTrees
 
--- | HTML block with tag and attrs
-newtype Block = Block XmlTree
+-- | HTML element with tag and attrs
+newtype Element = Element XmlTree
 
 -- | Text (may include escaped text internally)
-newtype Text  = Text XmlTrees
+newtype Text  = Text XmlTrees   -- precondition: XmlTrees is never []
 
--- | Attributes for a block
+-- | Attributes for a element
 newtype Attrs = Attrs XmlTrees
 
 -- | Single attribute
@@ -80,13 +81,13 @@ newtype Syntax  = Syntax XmlTree
 
 -- | Context contains all the containing nodes
 -- in an inside to outside order
-newtype Context = Context [Block]
+newtype Context = Context [Element]
 
 -- | Our universal node type. Only used during
 -- generic tree walking and traversals.
 data Node
         = HTMLNode      HTML
-        | BlockNode     Block
+        | ElementNode     Element
         | TextNode      Text
         | AttrsNode     Attrs
         | AttrNode      Attr
@@ -98,8 +99,8 @@ data Node
 instance Show HTML where
         show (HTML html) = xshow html
 
-instance Show Block where
-        show (Block html) = xshow [html]
+instance Show Element where
+        show (Element html) = xshow [html]
 
 instance Show Text where
         show (Text html) = xshow html
@@ -129,9 +130,9 @@ instance Injection HTML Node where
         project u = do HTMLNode t <- return u
                        return t
 
-instance Injection Block Node where
-        inject    = BlockNode
-        project u = do BlockNode t <- return u
+instance Injection Element Node where
+        inject    = ElementNode
+        project u = do ElementNode t <- return u
                        return t
 
 instance Injection Text Node where
@@ -161,7 +162,7 @@ instance Walker Context Node where
             HTMLNode  o  -> liftM HTMLNode  $ KURE.apply (htmlT  (extractR rr >>> arr html)
                                                                  (extractR rr >>> arr html)
                                                                  (extractR rr >>> arr html)   $ htmlC) c o
-            BlockNode o  -> liftM BlockNode  $ KURE.apply (blockT (extractR rr) (extractR rr) $ blockC) c o
+            ElementNode o  -> liftM ElementNode  $ KURE.apply (elementT (extractR rr) (extractR rr) $ elementC) c o
             TextNode  o  -> liftM TextNode   $ return o
             AttrsNode o  -> liftM AttrsNode  $ KURE.apply (attrsT (extractR rr)               $ attrsC) c o
             AttrNode  o  -> liftM AttrNode   $ return o
@@ -170,8 +171,8 @@ instance Walker Context Node where
 class Html a where
         html :: a -> HTML
 
-instance Html Block where
-        html (Block b) = HTML [b]
+instance Html Element where
+        html (Element b) = HTML [b]
 
 instance Html Text where
         html (Text b) = HTML b
@@ -182,18 +183,17 @@ instance Html Syntax where
 
 -----------------------------------------------------------------------------
 
--- | 'htmlT' take arrows that operate over blocks, texts, and syntax,
+-- | 'htmlT' take arrows that operate over elements, texts, and syntax,
 -- and returns a translate over HTML.
 
 htmlT :: (Monad m)
-     => Translate Context m Block a             -- used many times
+     => Translate Context m Element a             -- used many times
      -> Translate Context m Text a              -- used many times
      -> Translate Context m Syntax a            -- used many times
      -> ([a] -> x)
      -> Translate Context m HTML x
 htmlT tr1 tr2 tr3 k = translate $ \ c (HTML ts) -> liftM k $ flip mapM ts $ \ case
-                        t@(NTree (XTag {}) _)     -> apply tr1 c (Block t)
-                        t@(NTree (XText "") _)    -> apply tr3 c (Syntax t)     -- zero's
+                        t@(NTree (XTag {}) _)     -> apply tr1 c (Element t)
                         t@(NTree (XText {}) _)    -> apply tr2 c (Text [t])
                         t@(NTree (XCharRef n) _)  -> apply tr2 c (Text [t])
                         t@(NTree (XPi {}) _)      -> apply tr3 c (Syntax t)
@@ -206,29 +206,29 @@ htmlT tr1 tr2 tr3 k = translate $ \ c (HTML ts) -> liftM k $ flip mapM ts $ \ ca
 htmlC :: [HTML] -> HTML
 htmlC = mconcat
 
--- | 'blockT' take arrows that operate over attributes and (the inner) HTML,
--- and returns a translate over a single block.
+-- | 'elementT' take arrows that operate over attributes and (the inner) HTML,
+-- and returns a translate over a single element.
 
-blockT :: (Monad m)
+elementT :: (Monad m)
      => Translate Context m Attrs a
      -> Translate Context m HTML b
      -> (String -> a -> b -> x)
-     -> Translate Context m Block x
-blockT tr1 tr2 k = translate $ \ (Context cs) (Block t) ->
+     -> Translate Context m Element x
+elementT tr1 tr2 k = translate $ \ (Context cs) (Element t) ->
         case t of
           NTree (XTag tag attrs) rest
             | namePrefix tag == ""
            && namespaceUri tag == "" -> do
                   let nm = localPart tag
-                  let c = Context (Block t : cs)
+                  let c = Context (Element t : cs)
                   attrs' <- apply tr1 c (Attrs attrs)
                   rest'  <- apply tr2 c (HTML rest)
                   return $ k nm attrs' rest'
-          _ -> fail "blockT runtime type error"
+          _ -> fail "elementT runtime type error"
 
--- | 'blockC' builds a block from its components.
-blockC :: String -> Attrs -> HTML -> Block
-blockC nm (Attrs attrs) (HTML rest) = Block (NTree (XTag (mkName nm) attrs) rest)
+-- | 'elementC' builds a element from its components.
+elementC :: String -> Attrs -> HTML -> Element
+elementC nm (Attrs attrs) (HTML rest) = Element (NTree (XTag (mkName nm) attrs) rest)
 
 -- | 'textT' takes a Text to bits. The string is fully unescaped (a regular Haskell string)
 textT :: (Monad m)
@@ -241,12 +241,9 @@ textT k = translate $ \ _ (Text txt) ->
           fn (XCharRef c)  = Right c
           fn _             = error "found non XText / XCharRef in Text"
 
---                Text (NTree (XText txt) []) -> return $ k txt
---                Text t@(NTree (XCharRef n) []) -> return $ k $ xshow [t]
-
-
 -- | 'textC' constructs a Text from a fully unescaped string.
 textC :: String -> Text
+textC ""  = Text [ NTree (XText "") [] ]
 textC str = Text [ NTree t [] | t <-  map (either XText XCharRef) $ escapeText str ]
 
 -- | 'attrsT' promotes a translation over 'Attr' into a translation over 'Attrs'.
@@ -268,27 +265,27 @@ attrT :: (Monad m)
       => (String -> String -> x)
       -> Translate Context m Attr x
 attrT k = translate $ \ c -> \ case
-                Attr (NTree (XAttr nm) [NTree (XText txt) []])
+                Attr (NTree (XAttr nm) ts)
                    | namePrefix nm == ""
-                  && namespaceUri nm == "" -> return $ k (localPart nm) txt
+                  && namespaceUri nm == "" -> apply (textT $ k (localPart nm)) c (Text ts)
                 _                          -> fail "textT runtime error"
 
 -- | Create a single attribute.
 attrC :: String -> String -> Attr
-attrC nm val = Attr $ mkAttr (mkName nm) [mkText val]
-
+attrC nm val = Attr $ mkAttr (mkName nm) ts
+  where Text ts = textC val
 
 --------------------------------------------------
 -- HTML Builders.
 
--- | 'block' is the main way of generates a block in HTML.
-block :: String -> [Attr] -> HTML -> HTML
-block nm xs inner = HTML [t]
-  where Block t = blockC nm (attrsC xs) inner
+-- | 'element' is the main way of generates a element in HTML.
+element :: String -> [Attr] -> HTML -> HTML
+element nm xs inner = HTML [t]
+  where Element t = elementC nm (attrsC xs) inner
 
 -- | 'text' creates a HTML node with text inside it.
-text txt = HTML t
-  where Text t = textC txt
+text txt = HTML ts
+  where Text ts = textC txt
 
 -- | 'zero' is an empty piece of HTML, which can be used to avoid
 -- the use of the \<tag/\> form; for example "element \"br\" [] zero" will generate both an opener and closer.
@@ -304,10 +301,10 @@ attr :: String -> String -> Attr
 attr = attrC
 
 --------------------------------------------------
--- Block observers
+-- Element observers
 
--- | 'getAttr' gets the attributes of a specific attribute of a block.
-getAttr :: (MonadCatch m) => String -> Translate Context m Block String
+-- | 'getAttr' gets the attributes of a specific attribute of a element.
+getAttr :: (MonadCatch m) => String -> Translate Context m Element String
 getAttr nm = getAttrs >>> attrsT find catchesM >>> joinT
   where
           find :: (MonadCatch m) => Translate Context m Attr (m String)
@@ -315,24 +312,24 @@ getAttr nm = getAttrs >>> attrsT find catchesM >>> joinT
                                       then return val
                                       else fail $ "getAttr: not" ++ show nm
 
--- | 'isTag' checks the block for a specific block name.
-isTag :: (Monad m) => String -> Translate Context m Block ()
-isTag nm = blockT idR idR (\ nm' _ _ -> nm == nm') >>> guardT
+-- | 'isTag' checks the element for a specific element name.
+isTag :: (Monad m) => String -> Translate Context m Element ()
+isTag nm = elementT idR idR (\ nm' _ _ -> nm == nm') >>> guardT
 
--- | 'getTag' gets the block name.
-getTag :: (Monad m) => Translate Context m Block String
-getTag = blockT idR idR (\ nm _ _ -> nm)
+-- | 'getTag' gets the element name.
+getTag :: (Monad m) => Translate Context m Element String
+getTag = elementT idR idR (\ nm _ _ -> nm)
 
--- | 'getAttrs' gets the attributes inside a block.
-getAttrs :: (Monad m) => Translate Context m Block Attrs
-getAttrs = blockT idR idR (\ _ as _ -> as)
+-- | 'getAttrs' gets the attributes inside a element.
+getAttrs :: (Monad m) => Translate Context m Element Attrs
+getAttrs = elementT idR idR (\ _ as _ -> as)
 
--- | 'getInner' gets the HTML inside a block.
-getInner :: (Monad m) => Translate Context m Block HTML
-getInner = blockT idR idR (\ _ _ h -> h)
+-- | 'getInner' gets the HTML inside a element.
+getInner :: (Monad m) => Translate Context m Element HTML
+getInner = elementT idR idR (\ _ _ h -> h)
 
 --------------------------------------------------
--- common pattern; promote a translation over a block to over
+-- common pattern; promote a translation over a element to over
 
 injectT' :: (Monad m, Injection a g, g ~ Node) => Translate c m a g
 injectT' = injectT
@@ -354,11 +351,17 @@ promoteR' = promoteR
 
 ---------------------------------------
 
--- | lifts mapping of 'Block' to 'HTML' over a single level of 'HTML' sub-nodes.
--- 'concatMapHTML' has the property ''concatMapHTML (arr html) = idR''.
+-- Flatten into singleton HTMLs. The opposite of mconcat.
+unconcatHTML :: HTML -> [HTML]
+unconcatHTML (HTML ts) = map (\ t -> HTML [t]) ts
 
-concatMapHTML :: (Monad m) => Translate Context m Block HTML -> Translate Context m HTML HTML
-concatMapHTML tr = htmlT tr (arr html) (arr html) htmlC
+-- | lifts mapping of 'Element' to 'HTML' over a single level of 'HTML' sub-nodes.
+-- 'anyElementHTML' has the property ''anyElementHTML (arr html) = idR''.
+--
+-- This is successful only if any of the sub-transactions are successful.
+
+anyElementHTML :: (MonadCatch m) => Translate Context m Element HTML -> Rewrite Context m HTML
+anyElementHTML tr = arr unconcatHTML >>> unwrapAnyR (mapT (wrapAnyR $ extractT' $ oneT $ promoteT' tr)) >>> arr mconcat
 
 -- | parsing HTML files. If you want to unparse, use 'show'.
 
