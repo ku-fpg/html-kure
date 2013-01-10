@@ -351,7 +351,7 @@ promoteR' = promoteR
 
 ---------------------------------------
 
--- Flatten into singleton HTMLs. The opposite of mconcat.
+-- | Flatten into singleton HTMLs. The opposite of mconcat.
 unconcatHTML :: HTML -> [HTML]
 unconcatHTML (HTML ts) = map (\ t -> HTML [t]) ts
 
@@ -359,12 +359,10 @@ unconcatHTML (HTML ts) = map (\ t -> HTML [t]) ts
 -- 'anyElementHTML' has the property ''anyElementHTML (arr html) = idR''.
 --
 -- This is successful only if any of the sub-transactions are successful.
-
 anyElementHTML :: (MonadCatch m) => Translate Context m Element HTML -> Rewrite Context m HTML
 anyElementHTML tr = arr unconcatHTML >>> unwrapAnyR (mapT (wrapAnyR $ extractT' $ oneT $ promoteT' tr)) >>> arr mconcat
 
 -- | parsing HTML files. If you want to unparse, use 'show'.
-
 parseHTML :: FilePath -> String -> HTML
 parseHTML fileName input = HTML $ parseHtmlDocument fileName input
 
