@@ -291,9 +291,10 @@ text txt = HTML t
   where Text t = textC txt
 
 -- | 'zero' is an empty piece of HTML, which can be used to avoid
--- the use of the \<tag/\> form; for example "block \"br\" [] zero" will generate both an opener and closer. 'zero' is *not* the same as "text \"\"".
+-- the use of the \<tag/\> form; for example "element \"br\" [] zero" will generate both an opener and closer.
+-- 'zero' is the same as "text \"\"".
 zero :: HTML
-zero = HTML [ NTree (XText "") [] ]
+zero = text ""
 
 ----------------------------------------------------
 -- Attr builder
