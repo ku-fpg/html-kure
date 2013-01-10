@@ -358,7 +358,7 @@ unconcatHTML (HTML ts) = map (\ t -> HTML [t]) ts
 -- | lifts mapping of 'Element' to 'HTML' over a single level of 'HTML' sub-nodes.
 -- 'anyElementHTML' has the property ''anyElementHTML (arr html) = idR''.
 --
--- This is successful only if any of the sub-transactions are successful.
+-- This is successful only if any of the sub-translations are successful.
 anyElementHTML :: (MonadCatch m) => Translate Context m Element HTML -> Rewrite Context m HTML
 anyElementHTML tr = arr unconcatHTML >>> unwrapAnyR (mapT (wrapAnyR $ extractT' $ oneT $ promoteT' tr)) >>> arr mconcat
 
