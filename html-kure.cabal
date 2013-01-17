@@ -1,5 +1,5 @@
 Name:                html-kure
-Version:             0.1
+Version:             0.2
 Synopsis:            HTML rewrite engine, using KURE.
 Description:         This package provides a uniform KURE-based API
 		     for walking over, and generating, HTML structures.
@@ -18,7 +18,7 @@ Source-repository head
 
 Library
   Exposed-modules:     Text.HTML.KURE
-  Build-depends:       base >= 4.6,
+  Build-depends:       base >= 4.6 && < 5.0,
                        kure >= 2.6.14,
                        hxt >= 9.3.1.1
 
