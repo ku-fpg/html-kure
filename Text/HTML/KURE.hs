@@ -32,7 +32,7 @@ module Text.HTML.KURE
           Context(..),
           Node,
           Html(..),
-          -- * KURE combinators synonyms specialized to our generic type 'Node'
+          -- * KURE combinators synonyms specialized to our universe type 'Node'
           injectT',
           projectT',
           extractT',
@@ -45,15 +45,13 @@ import Text.XML.HXT.Parser.HtmlParsec
 import Text.XML.HXT.DOM.ShowXml
 import Text.XML.HXT.DOM.TypeDefs
 import Text.XML.HXT.DOM.XmlNode
-import Data.Tree.NTree.TypeDefs
-import Text.XML.HXT.Parser.XmlParsec hiding (element)
-import Text.XML.HXT.Parser.XhtmlEntities
+-- import Data.Tree.NTree.TypeDefs
+-- import Text.XML.HXT.Parser.XmlParsec hiding (element)
+-- import Text.XML.HXT.Parser.XhtmlEntities
 
 import Control.Arrow
-import Control.Applicative
 import Data.Char
 import Data.Monoid
-import Data.Maybe
 import Control.Monad
 
 --import Language.KURE.Walker
@@ -195,7 +193,7 @@ htmlT :: (Monad m)
 htmlT tr1 tr2 tr3 k = translate $ \ c (HTML ts) -> liftM k $ flip mapM ts $ \ case
                         t@(NTree (XTag {}) _)     -> apply tr1 c (Element t)
                         t@(NTree (XText {}) _)    -> apply tr2 c (Text [t])
-                        t@(NTree (XCharRef n) _)  -> apply tr2 c (Text [t])
+                        t@(NTree (XCharRef {}) _) -> apply tr2 c (Text [t])
                         t@(NTree (XPi {}) _)      -> apply tr3 c (Syntax t)
                         t@(NTree (XDTD {}) _)     -> apply tr3 c (Syntax t)
                         t@(NTree (XCmt {}) _)     -> apply tr3 c (Syntax t)
@@ -284,6 +282,7 @@ element nm xs inner = HTML [t]
   where Element t = elementC nm (attrsC xs) inner
 
 -- | 'text' creates a HTML node with text inside it.
+text :: String -> HTML
 text txt = HTML ts
   where Text ts = textC txt
 
@@ -331,22 +330,22 @@ getInner = elementT idR idR (\ _ _ h -> h)
 --------------------------------------------------
 -- common pattern; promote a translation over a element to over
 
-injectT' :: (Monad m, Injection a g, g ~ Node) => Translate c m a g
+injectT' :: (Monad m, Injection a Node) => Translate c m a Node
 injectT' = injectT
 
-projectT' :: (Monad m, Injection a g, g ~ Node) => Translate c m g a
+projectT' :: (Monad m, Injection a Node) => Translate c m Node a
 projectT' = projectT
 
-extractT' :: (Monad m, Injection a g, g ~ Node) => Translate c m g b -> Translate c m a b
+extractT' :: (Monad m, Injection a Node) => Translate c m Node b -> Translate c m a b
 extractT' = extractT
 
-promoteT' :: (Monad m, Injection a g, g ~ Node) => Translate c m a b -> Translate c m g b
+promoteT' :: (Monad m, Injection a Node) => Translate c m a b -> Translate c m Node b
 promoteT' = promoteT
 
-extractR' :: (Monad m, Injection a g, g ~ Node) => Rewrite c m g -> Rewrite c m a
+extractR' :: (Monad m, Injection a Node) => Rewrite c m Node -> Rewrite c m a
 extractR' = extractR
 
-promoteR' :: (Monad m, Injection a g, g ~ Node) => Rewrite c m a -> Rewrite c m g
+promoteR' :: (Monad m, Injection a Node) => Rewrite c m a -> Rewrite c m Node
 promoteR' = promoteR
 
 ---------------------------------------
