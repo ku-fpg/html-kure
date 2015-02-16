@@ -1,8 +1,8 @@
 Name:                html-kure
-Version:             0.2
+Version:             0.2.1
 Synopsis:            HTML rewrite engine, using KURE.
 Description:         This package provides a uniform KURE-based API
-		     for walking over, and generating, HTML structures.
+		             for walking over, and generating, HTML structures.
 Homepage:            www.ittc.ku.edu/csdl/fpg/software/html-kure
 License:             BSD3
 License-file:        LICENSE
@@ -12,6 +12,8 @@ Stability:           Experimental
 Category:            Web
 Build-type:          Simple
 Cabal-version:       >=1.8
+extra-source-files:  CHANGELOD.md, README.md
+
 Source-repository head
   type:     git
   location: https://github.com/ku-fpg/html-kure.git

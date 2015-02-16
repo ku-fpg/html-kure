@@ -157,12 +157,12 @@ instance Walker Context Node where
         allR :: forall m . MonadCatch m => Rewrite Context m Node -> Rewrite Context m Node
         allR rr = prefixFailMsg "allR failed: " $
           rewrite $ \ c -> \ case
-            HTMLNode  o  -> liftM HTMLNode  $ KURE.apply (htmlT  (extractR rr >>> arr html)
+            HTMLNode  o  -> liftM HTMLNode  $ KURE.applyT (htmlT (extractR rr >>> arr html)
                                                                  (extractR rr >>> arr html)
                                                                  (extractR rr >>> arr html)   $ htmlC) c o
-            ElementNode o  -> liftM ElementNode  $ KURE.apply (elementT (extractR rr) (extractR rr) $ elementC) c o
+            ElementNode o  -> liftM ElementNode  $ KURE.applyT (elementT (extractR rr) (extractR rr) $ elementC) c o
             TextNode  o  -> liftM TextNode   $ return o
-            AttrsNode o  -> liftM AttrsNode  $ KURE.apply (attrsT (extractR rr)               $ attrsC) c o
+            AttrsNode o  -> liftM AttrsNode  $ KURE.applyT (attrsT (extractR rr)               $ attrsC) c o
             AttrNode  o  -> liftM AttrNode   $ return o
             SyntaxNode o -> liftM SyntaxNode $ return o -- never processed
 
@@ -182,22 +182,22 @@ instance Html Syntax where
 -----------------------------------------------------------------------------
 
 -- | 'htmlT' take arrows that operate over elements, texts, and syntax,
--- and returns a translate over HTML.
+-- and returns a transformation over HTML.
 
 htmlT :: (Monad m)
-     => Translate Context m Element a             -- used many times
-     -> Translate Context m Text a              -- used many times
-     -> Translate Context m Syntax a            -- used many times
+     => Transform Context m Element a             -- used many times
+     -> Transform Context m Text a              -- used many times
+     -> Transform Context m Syntax a            -- used many times
      -> ([a] -> x)
-     -> Translate Context m HTML x
-htmlT tr1 tr2 tr3 k = translate $ \ c (HTML ts) -> liftM k $ flip mapM ts $ \ case
-                        t@(NTree (XTag {}) _)     -> apply tr1 c (Element t)
-                        t@(NTree (XText {}) _)    -> apply tr2 c (Text [t])
-                        t@(NTree (XCharRef {}) _) -> apply tr2 c (Text [t])
-                        t@(NTree (XPi {}) _)      -> apply tr3 c (Syntax t)
-                        t@(NTree (XDTD {}) _)     -> apply tr3 c (Syntax t)
-                        t@(NTree (XCmt {}) _)     -> apply tr3 c (Syntax t)
-                        t@(NTree (XError {}) _)   -> apply tr3 c (Syntax t)
+     -> Transform Context m HTML x
+htmlT tr1 tr2 tr3 k = transform $ \ c (HTML ts) -> liftM k $ flip mapM ts $ \ case
+                        t@(NTree (XTag {}) _)     -> applyT tr1 c (Element t)
+                        t@(NTree (XText {}) _)    -> applyT tr2 c (Text [t])
+                        t@(NTree (XCharRef {}) _) -> applyT tr2 c (Text [t])
+                        t@(NTree (XPi {}) _)      -> applyT tr3 c (Syntax t)
+                        t@(NTree (XDTD {}) _)     -> applyT tr3 c (Syntax t)
+                        t@(NTree (XCmt {}) _)     -> applyT tr3 c (Syntax t)
+                        t@(NTree (XError {}) _)   -> applyT tr3 c (Syntax t)
                         t -> error $ "not XTag or XText: " ++ take 100 (show t)
 
 -- | 'mconcat' over 'HTML'
@@ -205,22 +205,22 @@ htmlC :: [HTML] -> HTML
 htmlC = mconcat
 
 -- | 'elementT' take arrows that operate over attributes and (the inner) HTML,
--- and returns a translate over a single element.
+-- and returns a transformation over a single element.
 
 elementT :: (Monad m)
-     => Translate Context m Attrs a
-     -> Translate Context m HTML b
+     => Transform Context m Attrs a
+     -> Transform Context m HTML b
      -> (String -> a -> b -> x)
-     -> Translate Context m Element x
-elementT tr1 tr2 k = translate $ \ (Context cs) (Element t) ->
+     -> Transform Context m Element x
+elementT tr1 tr2 k = transform $ \ (Context cs) (Element t) ->
         case t of
           NTree (XTag tag attrs) rest
             | namePrefix tag == ""
            && namespaceUri tag == "" -> do
                   let nm = localPart tag
                   let c = Context (Element t : cs)
-                  attrs' <- apply tr1 c (Attrs attrs)
-                  rest'  <- apply tr2 c (HTML rest)
+                  attrs' <- applyT tr1 c (Attrs attrs)
+                  rest'  <- applyT tr2 c (HTML rest)
                   return $ k nm attrs' rest'
           _ -> fail "elementT runtime type error"
 
@@ -231,8 +231,8 @@ elementC nm (Attrs attrs) (HTML rest) = Element (NTree (XTag (mkName nm) attrs) 
 -- | 'textT' takes a Text to bits. The string is fully unescaped (a regular Haskell string)
 textT :: (Monad m)
       => (String -> x)
-      -> Translate Context m Text x
-textT k = translate $ \ _ (Text txt) ->
+      -> Transform Context m Text x
+textT k = transform $ \ _ (Text txt) ->
           return $ k $ unescapeText $ [ fn t | (NTree t _) <- txt ]
   where
           fn (XText    xs) = Left xs
@@ -244,13 +244,13 @@ textC :: String -> Text
 textC ""  = Text [ NTree (XText "") [] ]
 textC str = Text [ NTree t [] | t <-  map (either XText XCharRef) $ escapeText str ]
 
--- | 'attrsT' promotes a translation over 'Attr' into a translation over 'Attrs'.
+-- | 'attrsT' promotes a transformation over 'Attr' into a transformation over 'Attrs'.
 attrsT :: (Monad m)
-       => Translate Context m Attr a
+       => Transform Context m Attr a
        -> ([a] -> x)
-       -> Translate Context m Attrs x
-attrsT tr k = translate $ \ c (Attrs ts) -> liftM k $ flip mapM ts $ \ case
-                        t@(NTree (XAttr {}) _) -> apply tr c (Attr t)
+       -> Transform Context m Attrs x
+attrsT tr k = transform $ \ c (Attrs ts) -> liftM k $ flip mapM ts $ \ case
+                        t@(NTree (XAttr {}) _) -> applyT tr c (Attr t)
                         _                      -> fail "not XTag or XText"
 
 -- | join attributes together.
@@ -258,14 +258,14 @@ attrsC :: [Attr] -> Attrs
 attrsC xs = Attrs [ x | Attr x <- xs ]
 
 
--- | promote a function over an attributes components into a translate over 'Attr'.
+-- | promote a function over an attributes components into a transformation over 'Attr'.
 attrT :: (Monad m)
       => (String -> String -> x)
-      -> Translate Context m Attr x
-attrT k = translate $ \ c -> \ case
+      -> Transform Context m Attr x
+attrT k = transform $ \ c -> \ case
                 Attr (NTree (XAttr nm) ts)
                    | namePrefix nm == ""
-                  && namespaceUri nm == "" -> apply (textT $ k (localPart nm)) c (Text ts)
+                  && namespaceUri nm == "" -> applyT (textT $ k (localPart nm)) c (Text ts)
                 _                          -> fail "textT runtime error"
 
 -- | Create a single attribute.
@@ -303,43 +303,43 @@ attr = attrC
 -- Element observers
 
 -- | 'getAttr' gets the attributes of a specific attribute of a element.
-getAttr :: (MonadCatch m) => String -> Translate Context m Element String
+getAttr :: (MonadCatch m) => String -> Transform Context m Element String
 getAttr nm = getAttrs >>> attrsT find catchesM >>> joinT
   where
-          find :: (MonadCatch m) => Translate Context m Attr (m String)
+          find :: (MonadCatch m) => Transform Context m Attr (m String)
           find = attrT $ \ nm' val -> if nm' == nm
                                       then return val
                                       else fail $ "getAttr: not" ++ show nm
 
 -- | 'isTag' checks the element for a specific element name.
-isTag :: (Monad m) => String -> Translate Context m Element ()
+isTag :: (Monad m) => String -> Transform Context m Element ()
 isTag nm = elementT idR idR (\ nm' _ _ -> nm == nm') >>> guardT
 
 -- | 'getTag' gets the element name.
-getTag :: (Monad m) => Translate Context m Element String
+getTag :: (Monad m) => Transform Context m Element String
 getTag = elementT idR idR (\ nm _ _ -> nm)
 
 -- | 'getAttrs' gets the attributes inside a element.
-getAttrs :: (Monad m) => Translate Context m Element Attrs
+getAttrs :: (Monad m) => Transform Context m Element Attrs
 getAttrs = elementT idR idR (\ _ as _ -> as)
 
 -- | 'getInner' gets the HTML inside a element.
-getInner :: (Monad m) => Translate Context m Element HTML
+getInner :: (Monad m) => Transform Context m Element HTML
 getInner = elementT idR idR (\ _ _ h -> h)
 
 --------------------------------------------------
--- common pattern; promote a translation over a element to over
+-- common pattern; promote a transformation over a element to over
 
-injectT' :: (Monad m, Injection a Node) => Translate c m a Node
+injectT' :: (Monad m, Injection a Node) => Transform c m a Node
 injectT' = injectT
 
-projectT' :: (Monad m, Injection a Node) => Translate c m Node a
+projectT' :: (Monad m, Injection a Node) => Transform c m Node a
 projectT' = projectT
 
-extractT' :: (Monad m, Injection a Node) => Translate c m Node b -> Translate c m a b
+extractT' :: (Monad m, Injection a Node) => Transform c m Node b -> Transform c m a b
 extractT' = extractT
 
-promoteT' :: (Monad m, Injection a Node) => Translate c m a b -> Translate c m Node b
+promoteT' :: (Monad m, Injection a Node) => Transform c m a b -> Transform c m Node b
 promoteT' = promoteT
 
 extractR' :: (Monad m, Injection a Node) => Rewrite c m Node -> Rewrite c m a
@@ -357,8 +357,8 @@ unconcatHTML (HTML ts) = map (\ t -> HTML [t]) ts
 -- | lifts mapping of 'Element' to 'HTML' over a single level of 'HTML' sub-nodes.
 -- 'anyElementHTML' has the property ''anyElementHTML (arr html) = idR''.
 --
--- This is successful only if any of the sub-translations are successful.
-anyElementHTML :: (MonadCatch m) => Translate Context m Element HTML -> Rewrite Context m HTML
+-- This is successful only if any of the sub-transformations are successful.
+anyElementHTML :: (MonadCatch m) => Transform Context m Element HTML -> Rewrite Context m HTML
 anyElementHTML tr = arr unconcatHTML >>> unwrapAnyR (mapT (wrapAnyR $ extractT' $ oneT $ promoteT' tr)) >>> arr mconcat
 
 -- | parsing HTML files. If you want to unparse, use 'show'.
