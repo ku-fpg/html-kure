@@ -12,7 +12,7 @@ Stability:           Experimental
 Category:            Web
 Build-type:          Simple
 Cabal-version:       >=1.8
-extra-source-files:  CHANGELOD.md, README.md
+extra-source-files:  CHANGELOG.md, README.md
 
 Source-repository head
   type:     git
