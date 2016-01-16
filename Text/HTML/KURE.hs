@@ -1,4 +1,11 @@
-{-# LANGUAGE FlexibleInstances, MultiParamTypeClasses, ScopedTypeVariables, LambdaCase, InstanceSigs, FlexibleContexts, TypeFamilies #-}
+{-# LANGUAGE CPP #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE InstanceSigs #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeFamilies #-}
 
 module Text.HTML.KURE
         ( -- * Reading HTML
@@ -51,8 +58,11 @@ import Text.XML.HXT.DOM.XmlNode
 
 import Control.Arrow
 import Data.Char
-import Data.Monoid
+import Data.Monoid (Monoid(..))
 import Control.Monad
+#if __GLASGOW_HASKELL__ >= 800
+import Data.Semigroup (Semigroup(..))
+#endif
 
 --import Language.KURE.Walker
 import qualified Language.KURE as KURE
@@ -111,6 +121,14 @@ instance Show Attr where
 
 instance Show Syntax where
         show (Syntax syntax) = xshow [syntax]
+
+#if __GLASGOW_HASKELL__ >= 800
+instance Semigroup HTML where
+        (<>) = mappend
+
+instance Semigroup Context where
+        (<>) = mappend
+#endif
 
 instance Monoid HTML where
         mempty = HTML []
